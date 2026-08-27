@@ -1,76 +1,126 @@
 import re
+import json
 
 def parse_txt_questions(file_content: str) -> list:
     """
-    Parses quiz questions from raw text content.
-    Supports single or multiple questions formatted in various styles:
-    - Advance Quiz Bot exports
+    Parses quiz questions from raw text content or JSON formatted text files.
+    Supports:
+    - Advance Quiz Bot exports (.txt and .json in .txt)
     - Double-newline separated blocks (\n\n)
     - Dashed line separated blocks (---, ===, ***)
     - Standard numbered formats (1., Q1., Q:)
-    - Answers marked with ✅, [correct], or Ans: B / Answer: 2
-    - Optional explanations starting with Exp: or Explanation:
+    - Answers marked with ✅, ✔, [correct], or Ans: B / Answer: 2
+    - Optional explanations starting with Exp: or Explanation: or Ex:
     - Section headers [Section: Math]
     """
     if not file_content or not file_content.strip():
         return []
 
-    # Clean Windows line endings
-    content = file_content.replace('\r\n', '\n').replace('\r', '\n')
+    # Strip UTF-8 BOM if present
+    content = file_content.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n').strip()
 
-    # Remove noise like metadata lines RT: or ID:
-    content = re.sub(r'^(?:RT|ID):\s*.*$', '', content, flags=re.MULTILINE | re.IGNORECASE)
+    # 1. Fallback: Try JSON parsing if content looks like JSON
+    if content.startswith('{') or content.startswith('['):
+        try:
+            data = json.loads(content)
+            raw_qs = []
+            if isinstance(data, dict):
+                raw_qs = data.get('questions', data.get('quiz', []))
+                if isinstance(raw_qs, dict):
+                    raw_qs = raw_qs.get('questions', [])
+            elif isinstance(data, list):
+                raw_qs = data
 
-    # Determine splitting strategy
-    blocks = []
+            json_questions = []
+            for item in raw_qs:
+                if not isinstance(item, dict):
+                    continue
+                q_text = item.get('question_text') or item.get('question') or item.get('title') or ""
+                opts_raw = item.get('options') or []
+                
+                options = []
+                correct_idx = item.get('correct_option', item.get('correct_option_id', 0))
+                
+                if isinstance(opts_raw, list):
+                    for idx, opt in enumerate(opts_raw):
+                        if isinstance(opt, dict):
+                            opt_txt = opt.get('text') or opt.get('option') or str(opt)
+                            if opt.get('is_correct') or opt.get('correct'):
+                                correct_idx = len(options)
+                            options.append(str(opt_txt).strip())
+                        elif isinstance(opt, str):
+                            if "✅" in opt or "✔" in opt:
+                                correct_idx = len(options)
+                                opt = re.sub(r'✅|✔', '', opt).strip()
+                            options.append(opt.strip())
+
+                exp = item.get('explanation') or item.get('exp') or ""
+                sec = item.get('section_name') or item.get('section') or "General"
+
+                if q_text and len(options) >= 2:
+                    if not isinstance(correct_idx, int) or correct_idx >= len(options) or correct_idx < 0:
+                        correct_idx = 0
+                    json_questions.append({
+                        "section_name": sec,
+                        "question_text": str(q_text).strip(),
+                        "options": options,
+                        "correct_option": correct_idx,
+                        "explanation": str(exp).strip()
+                    })
+
+            if json_questions:
+                return json_questions
+        except Exception:
+            pass  # Not valid JSON, proceed to text parsing
+
+    # 2. Text Parsing Engine
+    # Clean out bot metadata tags like <ggn>...</ggn>, RT:, ID:
+    content = re.sub(r'<ggn>.*?</ggn>', '', content, flags=re.DOTALL)
+
+    # Determine block splitting strategy
     if re.search(r'\n\s*(?:---|===|\*\*\*)+\s*\n', content):
         blocks = re.split(r'\n\s*(?:---|===|\*\*\*)+\s*\n', content)
     else:
-        # Split by double/multiple blank lines
-        raw_blocks = re.split(r'\n\s*\n+', content)
-        for b in raw_blocks:
-            if b.strip():
-                # Check if a single block accidentally contains multiple numbered questions e.g. "1. ... \n 2. ..."
-                sub_blocks = re.split(r'\n(?=(?:Q|Question|\d+)\s*[\.:\)])', b, flags=re.IGNORECASE)
-                blocks.extend([sb for sb in sub_blocks if sb.strip()])
+        blocks = re.split(r'\n\s*\n+', content)
 
     questions = []
     current_section = "General"
-
-    # Option regex pattern matching A), A., (A), 1), 1., (1), a), a.
-    opt_pattern = re.compile(
-        r'^(?:[A-Da-d1-4][\.\)\-]|[\(][A-Da-d1-4][\)])\s*(.+)',
-        re.IGNORECASE
-    )
+    opt_re = re.compile(r'^\s*(?:[A-Da-d1-4][\.\)\-]|[\(][A-Da-d1-4][\)])\s*(.+)')
 
     for block in blocks:
-        lines = [line.strip() for line in block.strip().split('\n') if line.strip()]
-        if not lines:
+        block_str = block.strip()
+        if not block_str:
             continue
 
-        # Check section header
-        sec_match = re.match(r'\[\s*(?:Section|Subject):\s*(.+?)\s*\]', lines[0], re.IGNORECASE)
+        # Ignore standalone section header block [Section: XYZ]
+        sec_match = re.match(r'^\[\s*(?:Section|Subject):\s*(.+?)\s*\]$', block_str, re.IGNORECASE)
         if sec_match:
             current_section = sec_match.group(1).strip()
+            continue
+
+        lines = block_str.split('\n')
+
+        # Check section header on first line of block
+        if lines and re.match(r'^\[\s*(?:Section|Subject):\s*(.+?)\s*\]$', lines[0].strip(), re.IGNORECASE):
+            current_section = re.match(r'^\[\s*(?:Section|Subject):\s*(.+?)\s*\]$', lines[0].strip(), re.IGNORECASE).group(1).strip()
             lines = lines[1:]
-            if not lines:
-                continue
 
-        q_lines = []
-        options = []
-        correct_idx = None
-        ans_letter_or_num = None
+        filtered_lines = []
         explanation = ""
+        ans_letter_or_num = None
 
-        for line in lines:
-            # Check Explanation
-            exp_match = re.match(r'^(?:Exp|Explanation|Ex|Note)\s*[:.]\s*(.+)', line, re.IGNORECASE)
-            if exp_match:
-                explanation = exp_match.group(1).strip()
+        for ln in lines:
+            s_ln = ln.strip()
+            if not s_ln or s_ln.startswith(("RT:", "ID:")):
                 continue
 
-            # Check Answer line e.g., "Ans: B", "Answer: 2", "Correct: A"
-            ans_match = re.match(r'^(?:Ans|Answer|Correct)\s*[:.]\s*(.+)', line, re.IGNORECASE)
+            # Check Explanation line
+            if re.match(r'^(?:Ex|Exp|Explanation|Note)\s*[:.]', s_ln, re.IGNORECASE):
+                explanation = re.sub(r'^(?:Ex|Exp|Explanation|Note)\s*[:.]\s*', '', s_ln, flags=re.IGNORECASE).strip()
+                continue
+
+            # Check explicit Answer line e.g., Ans: B, Answer: 2
+            ans_match = re.match(r'^(?:Ans|Answer|Correct)\s*[:.]\s*(.+)', s_ln, re.IGNORECASE)
             if ans_match:
                 ans_str = ans_match.group(1).strip()
                 if ans_str.isdigit():
@@ -79,43 +129,67 @@ def parse_txt_questions(file_content: str) -> list:
                     ans_letter_or_num = "ABCD".index(ans_str[0].upper())
                 continue
 
-            # Check Option line
-            opt_match = opt_pattern.match(line)
-            if opt_match:
-                opt_val = opt_match.group(1).strip()
-                # Check for correct answer marker inside option
-                if "✅" in opt_val or "[correct]" in opt_val.lower() or "(correct)" in opt_val.lower():
-                    correct_idx = len(options)
-                    opt_val = re.sub(r'✅|\[correct\]|\(correct\)', '', opt_val, flags=re.IGNORECASE).strip()
-                options.append(opt_val)
-            elif "✅" in line or "[correct]" in line.lower() or "(correct)" in line.lower():
+            filtered_lines.append(ln)
+
+        if not filtered_lines:
+            continue
+
+        # Locate where options start in the block
+        opt_start_idx = None
+        for idx, ln in enumerate(filtered_lines):
+            s_ln = ln.strip()
+            if not s_ln:
+                continue
+            # Check emoji or dashed separator line between question and options (e.g. ⚡⚡⚡⚡ or ---)
+            if re.match(r'^[^\w\s]{3,}$', s_ln) and not any(c in s_ln for c in '✅✔'):
+                opt_start_idx = idx + 1
+                break
+            if opt_re.match(s_ln):
+                opt_start_idx = idx
+                break
+
+        if opt_start_idx is None:
+            # Fallback: line 0 is question, remaining lines are options
+            opt_start_idx = 1 if len(filtered_lines) > 1 else 0
+
+        q_lines = filtered_lines[:opt_start_idx]
+        opt_lines = filtered_lines[opt_start_idx:]
+
+        # Clean question text
+        q_text_raw = "\n".join([l.strip() for l in q_lines if l.strip()])
+        # Strip leading question number/prefix (e.g. "1. ", "Q1: ", "Question 1: ", "quiz_GGN7QD4TH.txt")
+        q_text = re.sub(r'^(?:Q|Question)?\s*\d*\s*[\.:\)]\s*', '', q_text_raw, flags=re.IGNORECASE).strip()
+        q_text = re.sub(r'\[\s*Q?\s*\d+/\d+\s*\]', '', q_text, flags=re.IGNORECASE).strip()
+        # Remove filename header if first line was a filename e.g. "quiz_xxxx.txt"
+        q_text = re.sub(r'^[a-zA-Z0-9_\-]+\.txt\s*\n?', '', q_text, flags=re.IGNORECASE).strip()
+
+        if not q_text and q_text_raw:
+            q_text = q_text_raw
+
+        options = []
+        correct_idx = None
+
+        for ln in opt_lines:
+            s_ln = ln.strip()
+            if not s_ln:
+                continue
+            
+            # Strip option prefix like A), A., (A), 1), 1., (1)
+            opt_val = re.sub(r'^\s*(?:[A-Da-d1-4][\.\)\-]|[\(][A-Da-d1-4][\)])\s*', '', s_ln)
+            
+            # Check for correct answer mark: ✅, ✔, [correct], (correct)
+            if any(m in opt_val for m in ['✅', '✔', '[correct]', '[CORRECT]', '(correct)', '(CORRECT)']):
                 correct_idx = len(options)
-                opt_val = re.sub(r'✅|\[correct\]|\(correct\)', '', line, flags=re.IGNORECASE).strip()
-                options.append(opt_val)
-            else:
-                # If options haven't started, treat as question text line
-                if not options:
-                    clean_line = line
-                    if not q_lines:  # Only for first line of question
-                        clean_line = re.sub(
-                            r'^(?:Q|Question)?\s*\d*\s*[\.:\)]\s*',
-                            '',
-                            line,
-                            flags=re.IGNORECASE
-                        ).strip()
-                        clean_line = re.sub(r'\[\s*Q?\s*\d+/\d+\s*\]', '', clean_line, flags=re.IGNORECASE).strip()
-                    if clean_line:
-                        q_lines.append(clean_line)
+                opt_val = re.sub(r'✅|✔|\[correct\]|\(correct\)', '', opt_val, flags=re.IGNORECASE).strip()
+            
+            options.append(opt_val)
 
-        q_text = "\n".join(q_lines).strip()
-
-        # If answer line specified correct index
         if correct_idx is None and ans_letter_or_num is not None:
             correct_idx = ans_letter_or_num
 
         if q_text and len(options) >= 2:
             if correct_idx is None or correct_idx >= len(options) or correct_idx < 0:
-                correct_idx = 0  # Fallback to 1st option if not marked
+                correct_idx = 0  # Default fallback to 1st option if not explicitly marked
             
             questions.append({
                 "section_name": current_section,

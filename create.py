@@ -93,10 +93,10 @@ async def question_input_handler(update: Update, context: ContextTypes.DEFAULT_T
     # 1. Check if Document (.txt file)
     if update.message.document:
         doc = update.message.document
-        if doc.file_name.endswith('.txt'):
+        if doc.file_name and (doc.file_name.lower().endswith('.txt') or doc.file_name.lower().endswith('.json')):
             file_obj = await doc.get_file()
             byte_content = await file_obj.download_as_bytearray()
-            txt_content = byte_content.decode('utf-8', errors='ignore')
+            txt_content = byte_content.decode('utf-8-sig', errors='ignore')
 
             parsed_qs = parse_txt_questions(txt_content)
             if not parsed_qs:
