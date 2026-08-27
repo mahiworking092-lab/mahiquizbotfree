@@ -1,3 +1,4 @@
+import os
 import aiosqlite
 import json
 import random
@@ -8,6 +9,10 @@ def generate_quiz_id(length=8):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=length))
 
 async def init_db():
+    db_dir = os.path.dirname(DATABASE_PATH)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
         CREATE TABLE IF NOT EXISTS users (
