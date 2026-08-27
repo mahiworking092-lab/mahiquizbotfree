@@ -15,22 +15,23 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     questions = await get_quiz_questions(quiz_id)
     bot_username = context.bot.username
 
-    share_url = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    start_url = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     group_url = f"https://t.me/{bot_username}?startgroup=quiz_{quiz_id}"
 
     card_text = (
-        "🎉 <b>Quiz Created Successfully!</b>\n\n"
+        "Quiz Created! 💬\n\n"
         f"💳 <b>Name:</b> {quiz['title']}\n"
         f"#️⃣ <b>Questions:</b> {len(questions)}\n"
         f"⏰ <b>Timer:</b> {quiz['timer']}s\n"
         f"🆔 <b>ID:</b> <code>{quiz_id}</code>\n"
-        f"👧 <b>Creator:</b> {quiz['creator_name']}\n\n"
-        "<i>Click below to practice privately or run live in group!</i>"
+        f"💰 <b>Type:</b> free\n"
+        f"💀 <b>-ve:</b> 0.00\n"
+        f"👧 <b>Creator:</b> {quiz['creator_name']}"
     )
 
     keyboard = [
-        [InlineKeyboardButton("🎯 Start Quiz in Chat", url=share_url)],
-        [InlineKeyboardButton("🚀 Add & Run in Group", url=group_url)]
+        [InlineKeyboardButton("🎯 Start", url=start_url)],
+        [InlineKeyboardButton("🚀 Group", url=group_url)],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

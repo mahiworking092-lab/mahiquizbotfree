@@ -200,23 +200,38 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
     questions = await get_quiz_questions(quiz_id)
 
     bot_username = context.bot.username
-    share_url = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    start_url = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     group_url = f"https://t.me/{bot_username}?startgroup=quiz_{quiz_id}"
 
+    import urllib.parse
+    share_text = (
+        "Quiz Created! 💬\n\n"
+        f"💳 Name: {quiz['title']}\n"
+        f"#️⃣ Questions: {len(questions)}\n"
+        f"⏰ Timer: {quiz['timer']}s\n"
+        f"🆔 ID: {quiz_id}\n"
+        f"💰 Type: free\n"
+        f"💀 -ve: 0.00\n"
+        f"👧 Creator: {quiz['creator_name']}\n\n"
+        f"👇 Click link below to play Quiz:"
+    )
+    direct_share_url = f"https://t.me/share/url?url={urllib.parse.quote(start_url)}&text={urllib.parse.quote(share_text)}"
+
     keyboard = [
-        [InlineKeyboardButton("🎯 Start Quiz in Chat", url=share_url)],
-        [InlineKeyboardButton("🚀 Add & Run in Group", url=group_url)],
-        [InlineKeyboardButton("📤 Share Quiz Card", switch_inline_query=quiz_id)]
+        [InlineKeyboardButton("🎯 Start", url=start_url)],
+        [InlineKeyboardButton("🚀 Group", url=group_url)],
+        [InlineKeyboardButton("🔗 Share", url=direct_share_url), InlineKeyboardButton("📤 Inline Share", switch_inline_query=quiz_id)]
     ]
 
     card_text = (
-        "🎉 <b>Quiz Created Successfully!</b>\n\n"
-        f"💳 <b>Title:</b> {quiz['title']}\n"
+        "Quiz Created! 💬\n\n"
+        f"💳 <b>Name:</b> {quiz['title']}\n"
         f"#️⃣ <b>Questions:</b> {len(questions)}\n"
         f"⏰ <b>Timer:</b> {quiz['timer']}s\n"
         f"🆔 <b>ID:</b> <code>{quiz_id}</code>\n"
-        f"👧 <b>Creator:</b> {quiz['creator_name']}\n\n"
-        "Aap niche buttons se abhi single practice kar sakte hain, group me start kar sakte hain, ya kisi ko poora Card share kar sakte hain!"
+        f"💰 <b>Type:</b> free\n"
+        f"💀 <b>-ve:</b> 0.00\n"
+        f"👧 <b>Creator:</b> {quiz['creator_name']}"
     )
 
     await query.edit_message_text(card_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")

@@ -54,24 +54,38 @@ async def view_quiz_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
     questions = await get_quiz_questions(quiz_id)
     bot_username = context.bot.username
 
-    share_url = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
+    start_url = f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
     group_url = f"https://t.me/{bot_username}?startgroup=quiz_{quiz_id}"
 
+    import urllib.parse
+    share_text = (
+        "Quiz Created! 💬\n\n"
+        f"💳 Name: {quiz['title']}\n"
+        f"#️⃣ Questions: {len(questions)}\n"
+        f"⏰ Timer: {quiz['timer']}s\n"
+        f"🆔 ID: {quiz_id}\n"
+        f"💰 Type: free\n"
+        f"💀 -ve: 0.00\n"
+        f"👧 Creator: {quiz['creator_name']}\n\n"
+        f"👇 Click link below to play Quiz:"
+    )
+    direct_share_url = f"https://t.me/share/url?url={urllib.parse.quote(start_url)}&text={urllib.parse.quote(share_text)}"
+
     text = (
-        f"📋 <b>Quiz Details</b>\n\n"
-        f"💳 <b>Title:</b> {quiz['title']}\n"
-        f"📄 <b>Description:</b> {quiz.get('description', 'N/A')}\n"
-        f"❓ <b>Questions:</b> {len(questions)}\n"
+        "Quiz Created! 💬\n\n"
+        f"💳 <b>Name:</b> {quiz['title']}\n"
+        f"#️⃣ <b>Questions:</b> {len(questions)}\n"
         f"⏰ <b>Timer:</b> {quiz['timer']}s\n"
         f"🆔 <b>ID:</b> <code>{quiz_id}</code>\n"
-        f"📅 <b>Created:</b> {quiz.get('created_at', 'N/A')}\n"
+        f"💰 <b>Type:</b> free\n"
+        f"💀 <b>-ve:</b> 0.00\n"
+        f"👧 <b>Creator:</b> {quiz['creator_name']}"
     )
 
     keyboard = [
-        [InlineKeyboardButton("🎯 Start in Chat", url=share_url), InlineKeyboardButton("🚀 Run in Group", url=group_url)],
-        [InlineKeyboardButton("📤 Share Card", switch_inline_query=quiz_id)],
-        [InlineKeyboardButton("📥 Export JSON", callback_data=f"export_{quiz_id}")],
-        [InlineKeyboardButton("🗑 Delete Quiz", callback_data=f"delquiz_{quiz_id}")],
+        [InlineKeyboardButton("🎯 Start", url=start_url), InlineKeyboardButton("🚀 Group", url=group_url)],
+        [InlineKeyboardButton("🔗 Share", url=direct_share_url), InlineKeyboardButton("📤 Inline Share", switch_inline_query=quiz_id)],
+        [InlineKeyboardButton("📥 Export JSON", callback_data=f"export_{quiz_id}"), InlineKeyboardButton("🗑 Delete Quiz", callback_data=f"delquiz_{quiz_id}")],
         [InlineKeyboardButton("🔙 My Quizzes", callback_data="btn_my_quizzes")],
     ]
 
