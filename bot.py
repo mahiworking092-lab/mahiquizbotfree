@@ -61,7 +61,7 @@ def main():
             TIMER: [CallbackQueryHandler(quiz_timer_received, pattern=r"^timer_\d+$")],
             ADD_QUESTIONS: [
                 MessageHandler(
-                    (filters.TEXT & ~filters.COMMAND) | filters.Document.ALL | filters.PHOTO | filters.Poll,
+                    (filters.TEXT & ~filters.COMMAND) | filters.Document.ALL | filters.PHOTO | filters.POLL,
                     question_input_handler,
                 ),
                 CallbackQueryHandler(finish_quiz_creation, pattern="^finish_quiz_create$"),
