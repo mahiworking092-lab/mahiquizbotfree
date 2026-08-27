@@ -1,0 +1,5 @@
+[phases.setup]
+aptPkgs = ["libjpeg62-turbo-dev", "zlib1g-dev", "libfreetype6-dev"]
+
+[start]
+cmd = "python bot.py"
